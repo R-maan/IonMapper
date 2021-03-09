@@ -1,48 +1,45 @@
 ﻿using Amazon.IonDotnet.Tree;
 using System;
-using System.Reflection;
-using System.Collections.Generic;
-using Amazon.IonDotnet;
-using static IonMapper.IonMapperFactory;
 
 namespace IonMapper
 {
     public class CustomIonMapper : IMapper, IIonMapper
     {
-        private IIonMapper defaultMapper;
-        private IMapper mapper;
+        private readonly IIonMapper DefaultMapper;
+        private readonly IMapper Mapper;
+
+        delegate T CustomeIIonStringConverter<T>(IIonString ionString);
+        delegate T CustomeIIonIntConverter<T>(IIonInt ionInt);
+        delegate T CustomeIIonBoolConverter<T>(IIonBool ionBool);
+
         private Func<IIonValue, object> IIonStringTo;
         private Func<IIonValue, object> IIonIntTo;
         private Func<IIonValue, object> IIonBoolTo;
 
         public CustomIonMapper(MapperTypes defaultMapperType)
         {
-            this.defaultMapper = IonMapperFactory.GetMapper(defaultMapperType);
-            this.mapper = defaultMapper.GetMapper();
+            this.DefaultMapper = IonMapperFactory.GetMapper(defaultMapperType);
+            this.Mapper = DefaultMapper.GetMapper();
         }
 
-
-        public CustomIonMapper(MapperTypes defaultMapperType, IMapper customizedMapper)
+        public CustomIonMapper WithMapperFromIonTo<T>(Func<IIonInt, T> func)
         {
-            this.defaultMapper = IonMapperFactory.GetMapper(defaultMapperType);
-            this.mapper = customizedMapper;
-        }
-
-        public CustomIonMapper WithMapperFromIonTo<T>(Func<IIonInt, object> func)
-        {
-            IIonIntTo = func;
+            T f(IIonInt x) => func(x);
+            IIonIntTo = x => f(x);
             return this;
         }
 
-        public CustomIonMapper WithMapperFromIonTo<T>(Func<IIonString, object> func)
+        public CustomIonMapper WithMapperFromIonTo<T>(Func<IIonString, T> func)
         {
-            IIonStringTo = func;
+            T f(IIonString x) => func(x);
+            IIonStringTo = x => f(x);
             return this;
         }
 
-        public CustomIonMapper WithMapperFromIonTo<T>(Func<IIonBool, object> func)
+        public CustomIonMapper WithMapperFromIonTo<T>(Func<IIonBool, T> func)
         {
-            IIonBoolTo= func;
+            T f(IIonBool x) => func(x);
+            IIonBoolTo = x => f(x);
             return this;
         }
 
@@ -63,7 +60,7 @@ namespace IonMapper
                 return (T)IIonIntTo(ionValue);
             }
 
-            return mapper.MapFromIonIntTo<T>(ionValue);
+            return Mapper.MapFromIonIntTo<T>(ionValue);
         }
 
         public T MapFromIonStringTo<T>(IIonValue ionValue)
@@ -73,78 +70,44 @@ namespace IonMapper
                 return (T)IIonStringTo(ionValue);
             }
 
-            return mapper.MapFromIonStringTo<T>(ionValue);
+            return Mapper.MapFromIonStringTo<T>(ionValue);
+        }
+
+        public T MapFromIonBoolTo<T>(IIonValue ionValue)
+        {
+            if (IIonBoolTo != null)
+            {
+                return (T)IIonBoolTo(ionValue);
+            }
+
+            return Mapper.MapFromIonBoolTo<T>(ionValue);
         }
 
         public IIonValue ToIon<T>(T value)
         {
-            return defaultMapper.ToIon(value);
+            return DefaultMapper.ToIon(value);
         }
 
         public T FromIon<T>(IIonValue ionValue)
         {
-            Object obj;
-
-            if (ionValue.Type() == IonType.Datagram)
-            {
-                ionValue = ionValue.GetElementAt(0);
-            }
-
-            if (Type.GetTypeCode(typeof(T)) == TypeCode.Object)
-            {
-                obj = DeserializeObject(typeof(T), ionValue);
-                return (T)obj;
-            }
-            else
-            {
-                obj = DeserializeNonObject(typeof(T), ionValue);
-                return (T)obj;
-            }
-        }
-
-        internal object DeserializeObject(Type type, IIonValue ionValue)
-        {
-            Object obj;
-            // Get type's attributes
-            IList<PropertyInfo> properties = new List<PropertyInfo>(type.GetProperties());
-
-            // Array to hold parameters to create object
-            object[] paramArray = new object[properties.Count];
-
-            int count = 0;
-            foreach (PropertyInfo property in properties)
-            {
-                Type propertyType = property.PropertyType;
-                if (Type.GetTypeCode(propertyType) == TypeCode.Object)
+            var des = new Deserializer((t, i) => {
+                switch (Type.GetTypeCode(t))
                 {
-                    obj = DeserializeObject(propertyType, ionValue.GetField(property.Name));
+                    case TypeCode.String:
+                        return this.MapFromIonStringTo<string>(i);
+                    case TypeCode.Int32:
+                    case TypeCode.Int16:
+                    case TypeCode.Int64:
+                        return this.MapFromIonIntTo<int>(i);
+                    case TypeCode.Boolean:
+                        return this.MapFromIonBoolTo<bool>(i);
+                    // TODO: define more types
+                    default:
+                        throw new Exception("Object type is not supported");
                 }
-                else
-                {
-                    obj = DeserializeNonObject(propertyType, ionValue.GetField(property.Name));
-                }
-                paramArray[count] = obj;
-                count++;
-            }
+            });
 
-            // Create object by passing in array of parameters into constructor
-            obj = Activator.CreateInstance(type, args: paramArray);
-            return obj;
-        }
-
-        internal object DeserializeNonObject(Type type, IIonValue ionValue)
-        {
-            // Object is a primitive type
-            switch (Type.GetTypeCode(type))
-            {
-                case TypeCode.String:
-                    return MapFromIonStringTo<string>(ionValue);
-                case TypeCode.Int32:
-                    return MapFromIonIntTo<int>(ionValue);
-                // TODO: define more types
-                default:
-                    throw new Exception("Object type is not supported");
-            }
+            return des.FromIonToType<T>(ionValue);
         }
     }
 }

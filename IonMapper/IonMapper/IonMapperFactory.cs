@@ -5,11 +5,11 @@ namespace IonMapper
     {
         LOSSY = 0,
         DEFAULT = 1,
-        JSON = 2,
-        STRICT = 3,
-        ION = 4,
+        STRICT = 2,
+        ION = 3,
     }
 
+    /// Is it still needed? We can use <see cref="IonMapper"/> static methods where they return "new Lossy()" etc.
     public static class IonMapperFactory
     {
         public static IIonMapper GetMapper(MapperTypes mapperType)

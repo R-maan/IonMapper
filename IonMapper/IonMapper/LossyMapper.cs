@@ -16,5 +16,11 @@ namespace IonMapper
             var val = ionValue.IntValue;
             return (T)(Object)val;
         }
+
+        public T MapFromIonBoolTo<T>(IIonValue ionValue)
+        {
+            var val = ionValue.BoolValue;
+            return (T)(Object)val;
+        }
     }
 }
